@@ -679,6 +679,9 @@ async function seedProfRatings(
 //
 // tutor001 and tutor002 (users[0] and users[1]) are pinned as tutors for
 // the first four sessions so a dev-login as either always shows sessions.
+//
+// All open requests use created_at within the last 1-3 days so they show as
+// recent, not expired. Matched requests use 1-3 days as well.
 // ---------------------------------------------------------------------------
 
 const SESSION_DESCRIPTIONS_BY_CODE: Record<string, string[]> = {
@@ -699,7 +702,7 @@ const SESSION_DESCRIPTIONS_BY_CODE: Record<string, string[]> = {
   MATH115A: ['The proof that the dual space has the same dimension is not clicking. Need an explanation from the definitions.', 'Change of basis problems keep confusing me. I mix up the direction the matrix is applied.'],
   ECON1:    ['Keep getting the direction of supply and demand shifts wrong on the homework. Need someone to drill this with me.', 'Elasticity problems are confusing me. The formula is fine but I cannot interpret the sign and magnitude correctly.'],
   ECON11:   ['Utility maximization setup is fine but I cannot solve the Lagrangian. Need help with the algebra.', 'Nash equilibrium problems are taking too long. Need help spotting the right strategy profile faster.'],
-  ECON101:  ['General equilibrium homework is much harder than intermediate micro. Need help setting up the excess demand system.', 'Mechanism design problems are not clicking. The incentive compatibility constraints are confusing me.'],
+  ECON101:  ['Need help with the ECON101 final, specifically consumer and producer surplus problems under a price ceiling.', 'General equilibrium homework is much harder than intermediate micro. Need help setting up the excess demand system.', 'Mechanism design problems are not clicking. The incentive compatibility constraints are confusing me.'],
   PSYCH100A:['Cannot figure out which statistical test to use on the homework. The decision tree from lecture is too abstract.', 'Stuck on interpreting interaction effects in the ANOVA table. I understand the computation but not the meaning.'],
   PSYCH100B:['Cannot articulate the difference between internal and external validity for the exam. Need concrete examples.', 'Struggling to design a valid within-subjects study. Not sure how to handle order effects.'],
   CS61A:    ['My recursive function for the tree lab hits the base case wrong. Need help understanding the invariant.', 'Cannot figure out how to use higher-order functions correctly in the scheme section.'],
@@ -732,13 +735,15 @@ async function seedSessions(
 ) {
   console.log('\n[10/11] Sessions')
 
-  const { count: existingSR } = await supabase
-    .from('session_requests')
-    .select('*', { count: 'exact', head: true })
-  if (existingSR && existingSR > 0) {
-    console.log(`  session_requests: ${existingSR} already exist, skipping`)
-    return
-  }
+  // Always delete and re-seed so stale descriptions and old timestamps never survive.
+  console.log('  deleting stale session_participants, sessions, session_requests...')
+  const { error: delP } = await supabase.from('session_participants').delete().neq('session_id', '00000000-0000-0000-0000-000000000000')
+  if (delP) console.error('  delete session_participants error:', delP.message)
+  const { error: delS } = await supabase.from('sessions').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+  if (delS) console.error('  delete sessions error:', delS.message)
+  const { error: delR } = await supabase.from('session_requests').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+  if (delR) console.error('  delete session_requests error:', delR.message)
+  console.log('  deleted.')
 
   const uclaStudents    = users.filter((u) => u.school === 'UCLA' && !u.isTutor)
   const berkStudents    = users.filter((u) => u.school === 'Berkeley')
@@ -763,6 +768,7 @@ async function seedSessions(
   const reqRows: object[] = []
 
   // UCLA - 8 open requests (varied types, durations, prices)
+  // created_at within last 1-3 days so they show as recent.
   const uclaOpenConfigs = [
     { session_type: 'emergency', duration_minutes: 45,  format: '1on1',  max_students: 1, price_display: 25, expires_hours: 2 },
     { session_type: 'emergency', duration_minutes: 60,  format: '1on1',  max_students: 1, price_display: 20, expires_hours: 3 },
@@ -795,6 +801,7 @@ async function seedSessions(
   }
 
   // UCLA - 10 matched requests -> will become sessions
+  // created_at within last 1-3 days so the feed does not show old relative timestamps.
   for (let i = 0; i < 10; i++) {
     const offeringId = pick(uclaOfferingIds)
     reqRows.push({
@@ -809,7 +816,7 @@ async function seedSessions(
       price_display:    pick([0, 15, 20, 20, 25]),
       status:           'matched',
       expires_at:       null,
-      created_at:       faker.date.recent({ days: 14 }).toISOString(),
+      created_at:       faker.date.recent({ days: 3 }).toISOString(),
     })
   }
 
@@ -828,7 +835,7 @@ async function seedSessions(
       price_display:    pick([0, 20, 25]),
       status:           'open',
       expires_at:       i === 0 ? new Date(Date.now() + 3_600_000).toISOString() : null,
-      created_at:       faker.date.recent({ days: 3 }).toISOString(),
+      created_at:       faker.date.recent({ days: 2 }).toISOString(),
     })
   }
 
@@ -990,6 +997,17 @@ async function main() {
   await seedProfRatings(users, profs, offerings)
   await seedSessions(users, offerings, uclaId, berkId)
   await seedStudyGroups(users, offerings)
+
+  // Confirm no Latin survived: print first 3 session_request descriptions.
+  const { data: sample } = await supabase
+    .from('session_requests')
+    .select('description')
+    .order('created_at', { ascending: false })
+    .limit(3)
+  console.log('\nFirst 3 session_request descriptions:')
+  for (const row of sample ?? []) {
+    console.log(' -', row.description)
+  }
 
   console.log('\nSeed complete!')
   console.log('Seeded accounts: tutor001-015@ucla.edu, student001-020@ucla.edu, student001-015@berkeley.edu')
