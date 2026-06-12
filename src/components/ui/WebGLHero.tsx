@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useRef, type RefObject } from 'react'
+import { useEffect, useRef, useState, useTransition, type RefObject } from 'react'
 import Link from 'next/link'
+import { demoLogin } from '@/app/actions/auth'
 
 // ---------------------------------------------------------------------------
 // GLSL source
@@ -229,53 +230,94 @@ function useShaderBackground(canvasRef: RefObject<HTMLCanvasElement | null>) {
 // ---------------------------------------------------------------------------
 
 function LoggedOutCTA() {
+  const [isPending, startTransition] = useTransition()
+  const [demoError, setDemoError] = useState<string | null>(null)
+
+  function handleDemo() {
+    setDemoError(null)
+    startTransition(async () => {
+      const result = await demoLogin()
+      if (result?.error) {
+        setDemoError(result.error)
+      }
+    })
+  }
+
   return (
     <div
       style={{
         display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
         gap: 14,
-        flexWrap: 'wrap',
-        justifyContent: 'center',
       }}
     >
-      <Link
-        href="/signup"
+      <div
         style={{
-          display: 'inline-flex',
+          display: 'flex',
           alignItems: 'center',
-          padding: '14px 30px',
-          background: '#6366f1',
-          color: '#ffffff',
-          borderRadius: 12,
-          fontSize: 15,
-          fontWeight: 600,
-          textDecoration: 'none',
-          letterSpacing: '-0.1px',
-          boxShadow: '0 0 0 1px rgba(99,102,241,0.35), 0 8px 28px rgba(99,102,241,0.40)',
+          gap: 14,
+          flexWrap: 'wrap',
+          justifyContent: 'center',
         }}
       >
-        Sign up with .edu
-      </Link>
+        <button
+          onClick={handleDemo}
+          disabled={isPending}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            padding: '14px 30px',
+            background: isPending ? 'rgba(99,102,241,0.6)' : '#6366f1',
+            color: '#ffffff',
+            borderRadius: 12,
+            fontSize: 15,
+            fontWeight: 600,
+            letterSpacing: '-0.1px',
+            boxShadow: '0 0 0 1px rgba(99,102,241,0.35), 0 8px 28px rgba(99,102,241,0.40)',
+            border: 'none',
+            cursor: isPending ? 'not-allowed' : 'pointer',
+            transition: 'background 0.15s',
+          }}
+        >
+          {isPending ? 'Loading...' : 'Enter demo'}
+        </button>
 
-      <Link
-        href="/login"
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          padding: '14px 30px',
-          background: 'rgba(255,255,255,0.07)',
-          color: 'rgba(255,255,255,0.85)',
-          borderRadius: 12,
-          fontSize: 15,
-          fontWeight: 600,
-          textDecoration: 'none',
-          letterSpacing: '-0.1px',
-          border: '1px solid rgba(255,255,255,0.14)',
-        }}
-      >
-        Sign in
-      </Link>
+        <Link
+          href="/login"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            padding: '14px 30px',
+            background: 'rgba(255,255,255,0.07)',
+            color: 'rgba(255,255,255,0.85)',
+            borderRadius: 12,
+            fontSize: 15,
+            fontWeight: 600,
+            textDecoration: 'none',
+            letterSpacing: '-0.1px',
+            border: '1px solid rgba(255,255,255,0.14)',
+          }}
+        >
+          Sign in
+        </Link>
+      </div>
+
+      {demoError && (
+        <p
+          style={{
+            fontSize: 13,
+            color: '#fca5a5',
+            margin: 0,
+            padding: '8px 14px',
+            background: 'rgba(239,68,68,0.15)',
+            borderRadius: 8,
+            border: '1px solid rgba(239,68,68,0.30)',
+          }}
+        >
+          {demoError}
+        </p>
+      )}
     </div>
   )
 }

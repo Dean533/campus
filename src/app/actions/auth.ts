@@ -168,3 +168,36 @@ export async function signOut() {
   await supabase.auth.signOut()
   redirect('/login')
 }
+
+// Public demo login: signs in as the pre-seeded UCLA tutor demo account.
+// Intentionally not gated behind NODE_ENV -- this is meant to be publicly
+// accessible on the deployed site so visitors can explore without signing up.
+export async function demoLogin() {
+  const DEMO_EMAIL = 'tutor001@ucla.edu'
+
+  const admin = createAdminClient()
+
+  const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
+    type: 'magiclink',
+    email: DEMO_EMAIL,
+  })
+
+  if (linkError) {
+    console.error('[demoLogin] generateLink error:', linkError)
+    return { error: linkError.message }
+  }
+
+  const supabase = await createClient()
+
+  const { error: verifyError } = await supabase.auth.verifyOtp({
+    token_hash: linkData.properties.hashed_token,
+    type: 'magiclink',
+  })
+
+  if (verifyError) {
+    console.error('[demoLogin] verifyOtp error:', verifyError)
+    return { error: verifyError.message }
+  }
+
+  redirect('/feed')
+}
